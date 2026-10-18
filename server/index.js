@@ -1,13 +1,14 @@
 import express from 'express';
 import helmet from 'helmet';
 import {config} from './config.js';
+import {db} from './db.js';
 import authRoutes from './routes/auth.js';
 import contactRoutes from './routes/contact.js';
 import postRoutes from './routes/posts.js';
 
 const app = express();
-// Render·Railway 같은 호스팅은 프록시 뒤에서 돌기 때문에 첫 번째 프록시의 IP 헤더를 믿는다
-app.set('trust proxy', 1);
+// Render·Railway 같은 호스팅은 프록시 뒤에서 돌기 때문에 프록시가 넘겨 준 IP 헤더를 믿는다
+app.set('trust proxy', config.trustProxy);
 
 const CDN = 'https://cdn.jsdelivr.net';
 app.use(helmet({
@@ -49,4 +50,16 @@ app.use((err, req, res, next) => {
   res.status(500).json({error: '서버에서 문제가 생겼어요. 잠시 후 다시 시도해 주세요.'});
 });
 
-app.listen(config.port, () => console.log(`포트폴리오 서버 실행 중 → http://localhost:${config.port}`));
+const server = app.listen(config.port, () => console.log(`포트폴리오 서버 실행 중 → http://localhost:${config.port}`));
+
+// 재배포할 때 호스팅이 보내는 SIGTERM 을 받으면 진행 중인 요청을 마무리하고 DB를 닫은 뒤 끝낸다
+function shutdown(signal) {
+  console.log(`${signal} 신호를 받아 서버를 종료해요.`);
+  server.close(() => {
+    db.close();
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10_000).unref();
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

@@ -14,6 +14,8 @@ export const config = {
   publicDir: path.join(root, 'public'),
   dataDir: path.resolve(root, env.DATA_DIR || 'data'),
   port: Number(env.PORT) || 3000,
+  // 앞단 프록시 개수. rate limit 이 방문자 IP를 제대로 구분하려면 호스팅 구조에 맞아야 한다
+  trustProxy: env.TRUST_PROXY === undefined ? 1 : Number(env.TRUST_PROXY),
   isProd: env.NODE_ENV === 'production',
   adminPassword: env.ADMIN_PASSWORD || '',
   sessionSecret: env.SESSION_SECRET || '',
