@@ -16,7 +16,15 @@ export const config = {
   port: Number(env.PORT) || 3000,
   isProd: env.NODE_ENV === 'production',
   adminPassword: env.ADMIN_PASSWORD || '',
-  sessionSecret: env.SESSION_SECRET || ''
+  sessionSecret: env.SESSION_SECRET || '',
+  smtp: {
+    host: env.SMTP_HOST || '',
+    port: Number(env.SMTP_PORT) || 465,
+    user: env.SMTP_USER || '',
+    pass: env.SMTP_PASS || ''
+  },
+  mailTo: env.MAIL_TO || 'yeda0311@gmail.com',
+  mailFrom: env.MAIL_FROM || env.SMTP_USER || ''
 };
 
 if (config.isProd && (!config.adminPassword || config.sessionSecret.length < 32)) {

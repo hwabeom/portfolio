@@ -2,6 +2,7 @@ import express from 'express';
 import helmet from 'helmet';
 import {config} from './config.js';
 import authRoutes from './routes/auth.js';
+import contactRoutes from './routes/contact.js';
 import postRoutes from './routes/posts.js';
 
 const app = express();
@@ -31,6 +32,7 @@ app.use(express.json({limit: '200kb'}));
 app.get('/api/health', (req, res) => res.json({ok: true}));
 app.use('/api', authRoutes);
 app.use('/api', postRoutes);
+app.use('/api', contactRoutes);
 app.use('/api', (req, res) => res.status(404).json({error: '존재하지 않는 API예요.'}));
 
 app.use(express.static(config.publicDir, {
