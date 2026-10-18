@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: node --check public/app.js && node --check public/data.js && node --check public/posts.js && node --check public/pet.js
+      - run: npm test
+      - run: npm audit --omit=dev --audit-level=high
+
+  docker:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t portfolio .
+      - name: 컨테이너를 띄워 헬스 체크와 비root 실행 확인
+        run: |
+          docker volume create portfolio-data
+          docker run -d --name portfolio -p 3000:3000 -v portfolio-data:/data \
+            -e ADMIN_PASSWORD=ci-password -e SESSION_SECRET=$(openssl rand -hex 32) portfolio
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:3000/api/health && break
+            sleep 1
+          done
+          curl -fsS http://localhost:3000/api/health
+          curl -fsS http://localhost:3000/api/posts | grep -q '"id"'
+          test "$(docker exec portfolio sh -c 'ps -o user= -p 1')" = "node"
+          docker exec portfolio test -f /data/portfolio.db
+      - if: failure()
+        run: docker logs portfolio || true
