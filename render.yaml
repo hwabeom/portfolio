@@ -1,0 +1,29 @@
+# Render Blueprint — 대시보드에서 New + → Blueprint 로 이 저장소를 연결하면 그대로 배포된다
+services:
+  - type: web
+    name: hwabeom-portfolio
+    runtime: docker
+    # 영구 디스크는 유료 플랜(starter 이상)에서만 붙는다. free 로 바꾸면 재배포·재시작 때마다 DB가 초기화된다
+    plan: starter
+    region: singapore
+    healthCheckPath: /api/health
+    autoDeploy: true
+    disk:
+      name: portfolio-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "465"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_TO
+        value: yeda0311@gmail.com
