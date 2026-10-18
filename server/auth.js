@@ -5,7 +5,9 @@ const COOKIE = 'yeda_admin';
 const MAX_AGE = 12 * 60 * 60 * 1000;
 
 const sha256 = text => crypto.createHash('sha256').update(String(text)).digest();
-const sign = data => crypto.createHmac('sha256', config.sessionSecret).update(data).digest('base64url');
+// 서명 키에 비밀번호를 섞어, ADMIN_PASSWORD 를 바꾸면 이전에 발급한 세션이 모두 무효가 되게 한다
+const signingKey = crypto.createHash('sha256').update(`${config.sessionSecret}\0${config.adminPassword}`).digest();
+const sign = data => crypto.createHmac('sha256', signingKey).update(data).digest('base64url');
 
 function safeEqual(a, b) {
   const x = Buffer.from(a), y = Buffer.from(b);
