@@ -272,3 +272,6 @@ body.modal-open .pet-butterfly{visibility:hidden}
   aside{position:fixed;height:auto;align-self:auto}
   .settings-pop{left:16px;right:16px;width:auto;bottom:40px}
 }
+.inbox .records{margin-top:18px}
+.inbox .record .message-text{margin-top:10px;color:var(--text);font-size:14px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere}
+.inbox .record .button{padding:7px 12px;font-size:12px}

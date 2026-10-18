@@ -2,12 +2,8 @@ const pages = [['overview', 'overview.tsx', 'TS'], ['projects', 'projects.py', '
 const NAME = '예다은';
 const GITHUB = 'https://github.com/hwabeom';
 const EMAIL = 'yeda0311@gmail.com';
-// FormSubmit: 처음 한 번 전송하면 위 메일로 활성화 메일이 오고, 승인한 뒤부터 메시지가 전달된다
-const FORM_ENDPOINT = `https://formsubmit.co/ajax/${EMAIL}`;
-// 블로그 관리자 비밀번호의 SHA-256 해시 (평문은 소스에 두지 않는다)
-const ADMIN_HASH = 'cae670fd5e97ee7f664ff0e65e071364df08b23074ac5f2b2d65bf63796b4eeb';
-const BLOG_KEY = 'yeda-blog-posts';
-const ADMIN_KEY = 'yeda-blog-admin';
+// 같은 서버(server/)의 API. 정적 호스팅이나 file:// 로 열면 연결에 실패하고 읽기 전용으로 동작한다
+const API = '/api';
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
@@ -15,6 +11,18 @@ const splitTags = value => (Array.isArray(value) ? value : String(value ?? '').s
 const tags = value => splitTags(value).map(t => `<span class="tag">${esc(t)}</span>`).join('');
 const findProject = id => DATA.projects.find(p => p.id === id);
 const external = (url, label, cls = 'button') => `<a class="${cls}" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)} ↗</a>`;
+
+async function api(path, {method = 'GET', body} = {}) {
+  const res = await fetch(`${API}${path}`, {
+    method,
+    credentials: 'same-origin',
+    headers: body ? {'Content-Type': 'application/json'} : {},
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const json = res.status === 204 ? null : await res.json().catch(() => null);
+  if (!res.ok) throw Object.assign(new Error(json?.error || `HTTP ${res.status}`), {status: res.status, fromServer: Boolean(json?.error)});
+  return json;
+}
 
 function period(s) {
   return s.split(' → ').map(v => {
@@ -158,20 +166,15 @@ async function sendMail(form) {
   status.className = 'form-status';
   status.textContent = '보내는 중…';
   try {
-    const res = await fetch(FORM_ENDPOINT, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', Accept: 'application/json'},
-      body: JSON.stringify({name: f.name, email: f.email, _replyto: f.email, _subject: `[포트폴리오] ${f.subject || `${f.name}님의 메시지`}`, message: f.message, _template: 'table', _captcha: 'false'})
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || String(json.success) !== 'true') throw new Error(json.message || `HTTP ${res.status}`);
+    await api('/contact', {method: 'POST', body: {name: f.name, email: f.email, subject: f.subject, message: f.message}});
     form.reset();
     status.classList.add('ok');
     status.textContent = '메시지를 보냈어요! 확인하고 답장 드릴게요.';
   } catch (err) {
     const mailto = `mailto:${EMAIL}?subject=${encodeURIComponent(f.subject || '포트폴리오 문의')}&body=${encodeURIComponent(`${f.message}\n\n— ${f.name} (${f.email})`)}`;
+    const reason = err.fromServer ? esc(err.message) : '전송하지 못했어요. 잠시 후 다시 시도하거나';
     status.classList.add('error');
-    status.innerHTML = `전송하지 못했어요. 잠시 후 다시 시도하거나 <a href="${esc(mailto)}">메일 앱으로 보내기</a>를 이용해 주세요.`;
+    status.innerHTML = `${reason} <a href="${esc(mailto)}">메일 앱으로 보내기</a>를 이용해 주세요.`;
   } finally {
     button.disabled = false;
     form.classList.remove('sending');
@@ -187,21 +190,34 @@ function copyEmail(button) {
 
 /* ---------- Blog ---------- */
 
-const clone = value => JSON.parse(JSON.stringify(value));
-const store = (area, fn, fallback) => { try { return fn(window[area]); } catch { return fallback; } };
-
-function loadPosts() {
-  const saved = store('localStorage', s => JSON.parse(s.getItem(BLOG_KEY)), null);
-  return Array.isArray(saved) ? saved : clone(SEED_POSTS);
-}
-
-let posts = loadPosts();
-let isAdmin = store('sessionStorage', s => s.getItem(ADMIN_KEY) === '1', false);
+// 서버에 연결되기 전이나 연결할 수 없을 때는 posts.js 의 기본 글을 보여 준다
+let posts = SEED_POSTS.map(p => ({...p}));
+let online = false;
+let loginEnabled = false;
+let isAdmin = false;
 let afterLogin = null;
 
-function savePosts() {
-  const ok = store('localStorage', s => { s.setItem(BLOG_KEY, JSON.stringify(posts)); return true; }, false);
-  if (!ok) toast('브라우저 저장소를 쓸 수 없어 새로고침하면 변경 사항이 사라져요.');
+async function connect() {
+  try {
+    const [list, session] = await Promise.all([api('/posts'), api('/session')]);
+    posts = list;
+    online = true;
+    loginEnabled = session.loginEnabled;
+    isAdmin = session.admin;
+  } catch {
+    online = false;
+  }
+  if (location.hash.startsWith('#blog')) render();
+}
+
+// 세션이 끝났거나 저장에 실패했을 때 공통으로 처리한다
+function handleAdminError(err) {
+  if (err.status === 401) {
+    isAdmin = false;
+    render();
+    return toast('로그인이 만료됐어요. 다시 로그인해 주세요.');
+  }
+  toast(err.fromServer ? err.message : '서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.');
 }
 
 const sortedPosts = () => [...posts].sort((a, b) => b.date.localeCompare(a.date));
@@ -238,15 +254,16 @@ function postCard(p) {
 const postCards = list => list.map(postCard).join('') || '<p class="empty">아직 작성된 글이 없습니다.</p>';
 
 function adminBar() {
+  if (!online || !loginEnabled) return '';
   if (!isAdmin) return `<div class="admin-bar reveal"><button class="link-button write-link" data-action="post-new">✎ 관리자 글쓰기</button></div>`;
   return `<div class="admin-bar reveal">
       <span class="admin-badge mono">● 관리자 모드</span>
       <button class="button primary" data-action="post-new">✎ 새 글 쓰기</button>
-      <button class="button" data-action="post-export">posts.js 내보내기</button>
-      <button class="button" data-action="post-reset">처음 글로 되돌리기</button>
+      <button class="button" data-action="messages">받은 메시지</button>
+      <button class="button" data-action="post-export">posts.js 백업</button>
       <button class="button" data-action="logout">로그아웃</button>
     </div>
-    <p class="note admin-note reveal">작성·수정한 글은 이 브라우저에 저장됩니다. 배포한 사이트에 반영하려면 posts.js를 내보내 프로젝트 폴더의 파일과 바꿔 주세요.</p>`;
+    <p class="note admin-note reveal">작성·수정한 글은 서버에 바로 저장돼 모든 방문자에게 보입니다. 'posts.js 백업'은 현재 글을 기본 글 파일 형식으로 내려받아요.</p>`;
 }
 
 function blog(id) {
@@ -312,11 +329,6 @@ function editorForm(p) {
   </form>`;
 }
 
-async function sha256(text) {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
 function requireAdmin(next, opener) {
   if (isAdmin) return next();
   afterLogin = next;
@@ -327,22 +339,19 @@ async function login(form) {
   const status = form.querySelector('.form-status');
   const input = form.elements.password;
   try {
-    if ((await sha256(input.value)) !== ADMIN_HASH) {
-      status.className = 'form-status error';
-      status.textContent = '비밀번호가 맞지 않아요.';
+    await api('/login', {method: 'POST', body: {password: input.value}});
+  } catch (err) {
+    status.className = 'form-status error';
+    status.textContent = err.fromServer ? err.message : '서버에 연결하지 못했어요.';
+    if (err.status === 401) {
       input.classList.remove('shake');
       void input.offsetWidth;
       input.classList.add('shake');
       input.select();
-      return;
     }
-  } catch {
-    status.className = 'form-status error';
-    status.textContent = '이 환경에서는 로그인할 수 없어요. https 주소에서 열어 주세요.';
     return;
   }
   isAdmin = true;
-  store('sessionStorage', s => s.setItem(ADMIN_KEY, '1'));
   closeModal(true);
   render();
   const next = afterLogin;
@@ -351,34 +360,79 @@ async function login(form) {
   else toast('관리자 모드로 전환했어요.');
 }
 
-function savePost(form) {
+async function savePost(form) {
   const f = new FormData(form);
-  const content = f.get('content').trim();
-  const summary = f.get('summary').trim() || content.replace(/[#>*`\-\[\]()]/g, '').replace(/\s+/g, ' ').trim().slice(0, 90);
-  const data = {title: f.get('title').trim(), date: f.get('date'), tags: splitTags(f.get('tags')), summary, content};
-  let id = form.dataset.id;
-  if (id) {
-    const i = posts.findIndex(p => p.id === id);
-    posts[i] = {...posts[i], ...data};
-  } else {
-    id = `post-${Date.now().toString(36)}`;
-    posts.push({id, ...data});
+  const data = {title: f.get('title').trim(), date: f.get('date'), tags: splitTags(f.get('tags')), summary: f.get('summary').trim(), content: f.get('content').trim()};
+  const editId = form.dataset.id;
+  const button = form.querySelector('[type="submit"]');
+  button.disabled = true;
+  let saved;
+  try {
+    saved = editId
+      ? await api(`/posts/${encodeURIComponent(editId)}`, {method: 'PUT', body: data})
+      : await api('/posts', {method: 'POST', body: data});
+  } catch (err) {
+    button.disabled = false;
+    if (err.status === 401) closeModal(true);
+    return handleAdminError(err);
   }
-  savePosts();
+  posts = editId ? posts.map(p => (p.id === editId ? saved : p)) : [...posts, saved];
   closeModal(true);
-  const hash = `#blog/${encodeURIComponent(id)}`;
+  const hash = postHref(saved);
   if (location.hash === hash) render();
   else location.hash = hash;
-  toast(form.dataset.id ? '글을 수정했어요.' : '글을 발행했어요.');
+  toast(editId ? '글을 수정했어요.' : '글을 발행했어요.');
 }
 
-function deletePost(id) {
+async function deletePost(id) {
   const p = posts.find(x => x.id === id);
   if (!p || !confirm(`‘${p.title}’ 글을 삭제할까요?`)) return;
+  try {
+    await api(`/posts/${encodeURIComponent(id)}`, {method: 'DELETE'});
+  } catch (err) {
+    return handleAdminError(err);
+  }
   posts = posts.filter(x => x.id !== id);
-  savePosts();
   location.hash = 'blog';
   toast('글을 삭제했어요.');
+}
+
+function messagesView(list) {
+  const rows = list.map(m => `<article class="record">
+      <time>${esc(m.createdAt.slice(0, 16).replace(/-/g, '.'))}</time>
+      <div>
+        <h3>${esc(m.subject || `${m.name}님의 메시지`)}</h3>
+        <p>${esc(m.name)} · <a href="mailto:${esc(m.email)}">${esc(m.email)}</a>${m.mailed ? '' : ' · 메일 미발송'}</p>
+        <p class="message-text">${esc(m.message)}</p>
+      </div>
+      <button class="button danger" data-action="message-delete" data-id="${m.id}">삭제</button>
+    </article>`).join('');
+  return `<div class="m-body inbox">
+    <p class="eyebrow">// INBOX</p>
+    <h2 id="modal-title">받은 메시지</h2>
+    <p class="note">연락처 폼으로 받은 최근 메시지 ${list.length}개예요.</p>
+    <div class="records">${rows || '<p class="empty">아직 받은 메시지가 없어요.</p>'}</div>
+  </div>`;
+}
+
+async function openMessages(opener) {
+  try {
+    openModal(messagesView(await api('/messages')), opener);
+  } catch (err) {
+    handleAdminError(err);
+  }
+}
+
+async function deleteMessage(button) {
+  if (!confirm('이 메시지를 삭제할까요?')) return;
+  try {
+    await api(`/messages/${button.dataset.id}`, {method: 'DELETE'});
+  } catch (err) {
+    if (err.status === 401) closeModal(true);
+    return handleAdminError(err);
+  }
+  button.closest('.record').remove();
+  toast('메시지를 삭제했어요.');
 }
 
 function exportPosts() {
@@ -388,14 +442,6 @@ function exportPosts() {
   a.download = 'posts.js';
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-}
-
-function resetPosts() {
-  if (!confirm('이 브라우저에서 작성·수정한 내용을 지우고 처음 글로 되돌릴까요?')) return;
-  posts = clone(SEED_POSTS);
-  store('localStorage', s => s.removeItem(BLOG_KEY));
-  render();
-  toast('처음 글로 되돌렸어요.');
 }
 
 function toast(message) {
@@ -580,10 +626,11 @@ const actions = {
   'post-edit': el => requireAdmin(() => openModal(editorForm(posts.find(p => p.id === el.dataset.id)), el), el),
   'post-delete': el => requireAdmin(() => deletePost(el.dataset.id), el),
   'post-export': () => exportPosts(),
-  'post-reset': () => resetPosts(),
-  'logout': () => {
+  'messages': el => requireAdmin(() => openMessages(el), el),
+  'message-delete': el => deleteMessage(el),
+  'logout': async () => {
+    await api('/logout', {method: 'POST'}).catch(() => {});
     isAdmin = false;
-    store('sessionStorage', s => s.removeItem(ADMIN_KEY));
     render();
     toast('로그아웃했어요.');
   }
@@ -710,3 +757,4 @@ document.getElementById('menu').addEventListener('click', () => {
 });
 window.addEventListener('hashchange', render);
 render();
+connect();
