@@ -39,7 +39,7 @@ jobs:
           done
           curl -fsS http://localhost:3000/api/health
           curl -fsS http://localhost:3000/api/posts | grep -q '"id"'
-          test "$(docker exec portfolio sh -c 'ps -o user= -p 1')" = "node"
+          test "$(docker exec portfolio awk '/^Uid:/{print $2}' /proc/1/status)" = "$(docker exec portfolio id -u node)"
           docker exec portfolio test -f /data/portfolio.db
       - if: failure()
         run: docker logs portfolio || true
