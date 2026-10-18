@@ -1,6 +1,7 @@
 import express from 'express';
 import helmet from 'helmet';
 import {config} from './config.js';
+import authRoutes from './routes/auth.js';
 
 const app = express();
 // Render·Railway 같은 호스팅은 프록시 뒤에서 돌기 때문에 첫 번째 프록시의 IP 헤더를 믿는다
@@ -27,6 +28,7 @@ app.use(helmet({
 app.use(express.json({limit: '200kb'}));
 
 app.get('/api/health', (req, res) => res.json({ok: true}));
+app.use('/api', authRoutes);
 app.use('/api', (req, res) => res.status(404).json({error: '존재하지 않는 API예요.'}));
 
 app.use(express.static(config.publicDir, {
