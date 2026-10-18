@@ -21,6 +21,8 @@ server/            백엔드 (Node.js + Express + SQLite)
   db.js            SQLite 스키마와 기본 글 시드
   mail.js          SMTP 메일 발송
   routes/          auth · posts · contact API
+test/              API 통합 테스트 (node:test)
+.github/workflows/ CI: 테스트 + Docker 이미지 검증
 ```
 
 ## 로컬에서 실행
@@ -31,7 +33,10 @@ Node.js 22.13 이상이 필요합니다 (내장 `node:sqlite` 사용).
 npm install
 cp .env.example .env    # ADMIN_PASSWORD 등을 채운다
 npm run dev             # http://localhost:3000, 파일을 고치면 자동 재시작
+npm test                # API 통합 테스트 (임시 DB 사용, 실제 data/ 는 건드리지 않음)
 ```
+
+`main`에 push하거나 PR을 열면 GitHub Actions가 테스트, `npm audit`, Docker 이미지 빌드·헬스 체크를 돌립니다.
 
 DB 파일은 `data/portfolio.db`에 생기며, 처음 실행할 때 `public/posts.js`의 글이 들어갑니다.
 `public/index.html`을 바로 열거나 정적 호스팅에 올려도 사이트는 보이지만, 이때 블로그는 읽기 전용이고 연락 폼은 메일 앱 링크로 대신합니다.
@@ -57,12 +62,24 @@ DB 파일은 `data/portfolio.db`에 생기며, 처음 실행할 때 `public/post
 | `SESSION_SECRET` | 배포 시 | 세션 쿠키 서명 키, 32자 이상 |
 | `NODE_ENV` | | `production`이면 Secure 쿠키·HSTS 적용 |
 | `PORT` | | 기본 3000 |
+| `TRUST_PROXY` | | 앞단 프록시 개수, 기본 1 (Render·Railway). rate limit이 방문자 IP를 구분하는 데 쓰임 |
 | `DATA_DIR` | | SQLite 저장 폴더, 기본 `data` (Docker는 `/data`) |
 | `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASS` | | 연락 폼 알림 메일. 비우면 DB에만 저장 |
 | `MAIL_TO` · `MAIL_FROM` | | 받는 주소 (기본 yeda0311@gmail.com) · 보내는 주소 (기본 `SMTP_USER`) |
 
 Gmail로 받으려면 Google 계정에서 2단계 인증을 켜고 [앱 비밀번호](https://myaccount.google.com/apppasswords)를 만들어 `SMTP_USER`에 Gmail 주소, `SMTP_PASS`에 앱 비밀번호를 넣습니다.
 메일 발송이 실패해도 메시지는 DB에 남아 있어 관리자 모드의 **받은 메시지**에서 볼 수 있습니다.
+서버가 시작할 때 SMTP 접속을 한 번 시험하고 결과를 로그에 남기니, 배포 직후 로그에서 `[mail] SMTP 연결 확인`이 보이는지 확인하세요.
+
+## 보안 정책
+
+- 관리자 세션은 서버에 저장하지 않고, 만료 시각을 HMAC으로 서명한 `HttpOnly`·`SameSite=Strict` 쿠키(배포 시 `Secure`)로 12시간 유지합니다.
+- 서명 키는 `SESSION_SECRET`과 `ADMIN_PASSWORD`로 만들기 때문에, **둘 중 하나를 바꾸면 이미 로그인한 모든 세션이 바로 끊깁니다.** 쿠키가 유출됐다고 의심되면 비밀번호를 바꾸세요.
+- 쓰기 API는 JSON 요청만 받고 쿠키가 SameSite=Strict라서 다른 사이트에서 위조한 요청(CSRF)은 통하지 않습니다.
+- 로그인 실패는 15분에 10회, 연락 폼은 1시간에 5회로 IP별 제한합니다.
+- helmet으로 CSP(`script-src 'self'`, `frame-ancestors 'none'` 등)와 보안 헤더를 붙이고, 화면에 출력하는 값은 모두 HTML 이스케이프합니다.
+- 연락 메시지의 이름·제목에서 줄바꿈을 지워 메일 헤더 인젝션을 막습니다.
+- Docker 컨테이너에서는 서버가 root가 아닌 `node` 사용자로 실행됩니다.
 
 ## 배포
 
@@ -74,7 +91,13 @@ SQLite 파일을 쓰기 때문에 **영구 디스크(볼륨)를 붙일 수 있�
 2. `ADMIN_PASSWORD`, `SMTP_USER`, `SMTP_PASS` 값을 입력 (`SESSION_SECRET`은 자동 생성)
 3. 배포가 끝나면 `https://<서비스명>.onrender.com`에서 확인, `main`에 push할 때마다 자동 배포
 
-영구 디스크는 Starter 이상 유료 플랜에서만 쓸 수 있습니다. `render.yaml`의 `plan`을 `free`로 바꾸고 `disk`를 지우면 무료로 띄울 수 있지만, 재시작·재배포 때마다 DB가 처음 상태로 돌아갑니다.
+영구 디스크는 Starter 이상 유료 플랜에서만 쓸 수 있습니다. `render.yaml`의 `plan`을 `free`로 바꾸고 `disk`를 지우면 무료로 띄울 수 있지만, 재시작·재배포 때마다 DB가 처음 상태로 돌아갑니다. 무료 인스턴스는 SMTP 포트도 막혀 있을 수 있으니 메일 알림이 오지 않으면 로그를 확인하세요.
+
+배포 후 확인할 것:
+
+1. `https://<서비스명>.onrender.com/api/health`가 `{"ok":true}`인지
+2. blog.md 탭에서 **관리자 글쓰기**로 로그인해 글을 쓰고, 다른 브라우저에서도 보이는지
+3. contact.ts 탭에서 메시지를 보내 메일이 오는지, 관리자 모드의 **받은 메시지**에 쌓이는지
 
 ### Railway · Fly.io · 직접 운영하는 서버
 
