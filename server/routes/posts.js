@@ -14,7 +14,7 @@ function validate(body = {}) {
   const str = v => (typeof v === 'string' ? v.trim() : '');
   const title = str(body.title);
   const date = str(body.date);
-  const content = str(body.content);
+  const content = str(body.content).replace(/\r\n?/g, '\n');
   const tags = Array.isArray(body.tags) ? [...new Set(body.tags.map(str).filter(Boolean))] : [];
   const summary = str(body.summary) || autoSummary(content);
 

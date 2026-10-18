@@ -25,7 +25,8 @@ router.post('/contact', contactLimiter, async (req, res) => {
   const name = line(body.name);
   const email = line(body.email);
   const subject = line(body.subject);
-  const message = typeof body.message === 'string' ? body.message.trim() : '';
+  // 브라우저 폼은 줄바꿈을 \r\n 으로 보내서, 화면에 보이는 글자 수와 맞도록 \n 으로 통일한다
+  const message = typeof body.message === 'string' ? body.message.replace(/\r\n?/g, '\n').trim() : '';
 
   if (!name || name.length > 40) return res.status(400).json({error: '이름은 1~40자로 적어 주세요.'});
   if (email.length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({error: '이메일 주소를 확인해 주세요.'});
@@ -45,7 +46,7 @@ router.post('/contact', contactLimiter, async (req, res) => {
 
 router.get('/messages', requireAdmin, (req, res) => {
   const rows = db.prepare('SELECT * FROM messages ORDER BY id DESC LIMIT 200').all();
-  res.json(rows.map(r => ({id: r.id, name: r.name, email: r.email, subject: r.subject, message: r.message, mailed: Boolean(r.mailed), createdAt: r.created_at})));
+  res.json(rows.map(r => ({id: r.id, name: r.name, email: r.email, subject: r.subject, message: r.message, mailed: Boolean(r.mailed), createdAt: `${r.created_at.replace(' ', 'T')}Z`})));
 });
 
 router.delete('/messages/:id', requireAdmin, (req, res) => {
