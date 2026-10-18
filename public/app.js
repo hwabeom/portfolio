@@ -17,7 +17,9 @@ async function api(path, {method = 'GET', body} = {}) {
     method,
     credentials: 'same-origin',
     headers: body ? {'Content-Type': 'application/json'} : {},
-    body: body ? JSON.stringify(body) : undefined
+    body: body ? JSON.stringify(body) : undefined,
+    // 서버가 잠들어 있거나 응답이 없을 때 무한정 기다리지 않는다
+    signal: AbortSignal.timeout(15000)
   });
   const json = res.status === 204 ? null : await res.json().catch(() => null);
   if (!res.ok) throw Object.assign(new Error(json?.error || `HTTP ${res.status}`), {status: res.status, fromServer: Boolean(json?.error)});
@@ -172,9 +174,10 @@ async function sendMail(form) {
     status.textContent = '메시지를 보냈어요! 확인하고 답장 드릴게요.';
   } catch (err) {
     const mailto = `mailto:${EMAIL}?subject=${encodeURIComponent(f.subject || '포트폴리오 문의')}&body=${encodeURIComponent(`${f.message}\n\n— ${f.name} (${f.email})`)}`;
-    const reason = err.fromServer ? esc(err.message) : '전송하지 못했어요. 잠시 후 다시 시도하거나';
     status.classList.add('error');
-    status.innerHTML = `${reason} <a href="${esc(mailto)}">메일 앱으로 보내기</a>를 이용해 주세요.`;
+    // 입력값 문제(400)는 고치면 되니 안내만 하고, 서버·네트워크 문제일 때만 메일 앱을 권한다
+    if (err.status === 400) status.textContent = err.message;
+    else status.innerHTML = `${err.fromServer ? esc(err.message) : '전송하지 못했어요. 잠시 후 다시 시도하거나'} <a href="${esc(mailto)}">메일 앱으로 보내기</a>를 이용해 주세요.`;
   } finally {
     button.disabled = false;
     form.classList.remove('sending');
@@ -192,6 +195,7 @@ function copyEmail(button) {
 
 // 서버에 연결되기 전이나 연결할 수 없을 때는 posts.js 의 기본 글을 보여 준다
 let posts = SEED_POSTS.map(p => ({...p}));
+let postsReady = false;
 let online = false;
 let loginEnabled = false;
 let isAdmin = false;
@@ -207,6 +211,7 @@ async function connect() {
   } catch {
     online = false;
   }
+  postsReady = true;
   if (location.hash.startsWith('#blog')) render();
 }
 
@@ -267,6 +272,8 @@ function adminBar() {
 }
 
 function blog(id) {
+  // 서버 응답 전에 기본 글로 그렸다가 바뀌면 깜빡이거나, 새 글 주소에서 '찾을 수 없음'이 잠깐 보인다
+  if (!postsReady) return `${title('BLOG', '글을 불러오는 중…')}`;
   if (id) return postView(id);
   const list = sortedPosts();
   const tagList = ['전체', ...new Set(list.flatMap(p => p.tags))];
@@ -307,9 +314,10 @@ function loginForm() {
   </form>`;
 }
 
-function editorForm(p) {
+// draft: 저장하다 로그인이 만료됐을 때 다시 열면서 채워 넣을 작성 중인 내용
+function editorForm(p, draft) {
   const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-  const v = p || {title: '', date: today, tags: [], summary: '', content: ''};
+  const v = draft || p || {title: '', date: today, tags: [], summary: '', content: ''};
   return `<form class="m-body form" id="post-form" data-id="${p ? esc(p.id) : ''}">
     <p class="eyebrow">// ${p ? 'EDIT POST' : 'NEW POST'}</p>
     <h2 id="modal-title">${p ? '글 수정' : '새 글 쓰기'}</h2>
@@ -325,6 +333,7 @@ function editorForm(p) {
       <div class="post-body preview" hidden></div>
       <p class="note">## 소제목 · - 목록 · &gt; 인용 · **굵게** · \`코드\` · [링크](https://…) · 문단은 빈 줄로 구분</p>
     </div>
+    <p class="form-status" role="status" aria-live="polite"></p>
     <div class="actions"><button class="button primary" type="submit">${p ? '수정 저장' : '발행하기'}</button><button class="button" type="button" data-close>취소</button></div>
   </form>`;
 }
@@ -338,9 +347,13 @@ function requireAdmin(next, opener) {
 async function login(form) {
   const status = form.querySelector('.form-status');
   const input = form.elements.password;
+  const button = form.querySelector('[type="submit"]');
+  if (button.disabled) return;
+  button.disabled = true;
   try {
     await api('/login', {method: 'POST', body: {password: input.value}});
   } catch (err) {
+    button.disabled = false;
     status.className = 'form-status error';
     status.textContent = err.fromServer ? err.message : '서버에 연결하지 못했어요.';
     if (err.status === 401) {
@@ -365,7 +378,11 @@ async function savePost(form) {
   const data = {title: f.get('title').trim(), date: f.get('date'), tags: splitTags(f.get('tags')), summary: f.get('summary').trim(), content: f.get('content').trim()};
   const editId = form.dataset.id;
   const button = form.querySelector('[type="submit"]');
+  const status = form.querySelector('.form-status');
+  if (button.disabled) return;
   button.disabled = true;
+  status.className = 'form-status';
+  status.textContent = '저장하는 중…';
   let saved;
   try {
     saved = editId
@@ -373,8 +390,23 @@ async function savePost(form) {
       : await api('/posts', {method: 'POST', body: data});
   } catch (err) {
     button.disabled = false;
-    if (err.status === 401) closeModal(true);
-    return handleAdminError(err);
+    if (err.status === 401) {
+      // 쓰던 글을 잃지 않도록 다시 로그인하면 같은 내용으로 편집기를 다시 연다
+      isAdmin = false;
+      render();
+      const original = editId ? posts.find(p => p.id === editId) : null;
+      afterLogin = () => {
+        openModal(editorForm(original, data), null);
+        formDirty = true;
+        toast('다시 로그인했어요. 저장 버튼을 한 번 더 눌러 주세요.');
+      };
+      openModal(loginForm(), null, true);
+      document.querySelector('#login-form .form-status').textContent = '로그인이 만료됐어요. 작성 중인 글은 그대로 남아 있어요.';
+      return;
+    }
+    status.className = 'form-status error';
+    status.textContent = err.fromServer ? err.message : '서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.';
+    return;
   }
   posts = editId ? posts.map(p => (p.id === editId ? saved : p)) : [...posts, saved];
   closeModal(true);
@@ -397,9 +429,16 @@ async function deletePost(id) {
   toast('글을 삭제했어요.');
 }
 
+const localTime = iso => {
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+const emptyInbox = '<p class="empty">아직 받은 메시지가 없어요.</p>';
+
 function messagesView(list) {
   const rows = list.map(m => `<article class="record">
-      <time>${esc(m.createdAt.slice(0, 16).replace(/-/g, '.'))}</time>
+      <time>${esc(localTime(m.createdAt))}</time>
       <div>
         <h3>${esc(m.subject || `${m.name}님의 메시지`)}</h3>
         <p>${esc(m.name)} · <a href="mailto:${esc(m.email)}">${esc(m.email)}</a>${m.mailed ? '' : ' · 메일 미발송'}</p>
@@ -410,8 +449,8 @@ function messagesView(list) {
   return `<div class="m-body inbox">
     <p class="eyebrow">// INBOX</p>
     <h2 id="modal-title">받은 메시지</h2>
-    <p class="note">연락처 폼으로 받은 최근 메시지 ${list.length}개예요.</p>
-    <div class="records">${rows || '<p class="empty">아직 받은 메시지가 없어요.</p>'}</div>
+    <p class="note">연락처 폼으로 받은 최근 메시지예요. 답장은 이메일 주소를 눌러 보내 주세요.</p>
+    <div class="records" id="inbox-list">${rows || emptyInbox}</div>
   </div>`;
 }
 
@@ -432,6 +471,8 @@ async function deleteMessage(button) {
     return handleAdminError(err);
   }
   button.closest('.record').remove();
+  const list = document.getElementById('inbox-list');
+  if (list && !list.children.length) list.innerHTML = emptyInbox;
   toast('메시지를 삭제했어요.');
 }
 
