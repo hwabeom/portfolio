@@ -31,16 +31,20 @@ db.exec(`
   );
 `);
 
-// 처음 실행할 때만 public/posts.js 의 기본 글을 DB에 넣는다
+// DB를 처음 만들 때 한 번만 public/posts.js 의 기본 글을 넣는다.
+// 글 개수로 판단하면 관리자가 글을 모두 지운 뒤 재시작할 때 기본 글이 되살아나므로 user_version 으로 기록한다
 function seedPosts() {
-  if (db.prepare('SELECT COUNT(*) AS n FROM posts').get().n > 0) return;
-  const source = readFileSync(path.join(config.publicDir, 'posts.js'), 'utf8');
-  const seed = vm.runInNewContext(`${source}\nSEED_POSTS`);
-  const insert = db.prepare('INSERT INTO posts (id, title, date, tags, summary, content) VALUES (?, ?, ?, ?, ?, ?)');
-  db.exec('BEGIN');
-  for (const p of seed) insert.run(p.id, p.title, p.date, JSON.stringify(p.tags), p.summary, p.content);
-  db.exec('COMMIT');
-  console.log(`[db] 기본 글 ${seed.length}개를 넣었어요.`);
+  if (db.prepare('PRAGMA user_version').get().user_version >= 1) return;
+  if (db.prepare('SELECT COUNT(*) AS n FROM posts').get().n === 0) {
+    const source = readFileSync(path.join(config.publicDir, 'posts.js'), 'utf8');
+    const seed = vm.runInNewContext(`${source}\nSEED_POSTS`);
+    const insert = db.prepare('INSERT INTO posts (id, title, date, tags, summary, content) VALUES (?, ?, ?, ?, ?, ?)');
+    db.exec('BEGIN');
+    for (const p of seed) insert.run(p.id, p.title, p.date, JSON.stringify(p.tags), p.summary, p.content);
+    db.exec('COMMIT');
+    console.log(`[db] 기본 글 ${seed.length}개를 넣었어요.`);
+  }
+  db.exec('PRAGMA user_version = 1');
 }
 
 seedPosts();
