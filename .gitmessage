@@ -1,0 +1,17 @@
+
+# <type>(<scope>): <제목>   ← 50자 안쪽, 마침표 없이
+#
+# <본문>                     ← 무엇을, 왜 바꿨는지 (72자에서 줄바꿈)
+#
+# <꼬리말>                   ← BREAKING CHANGE: … / Closes #이슈번호
+#
+# type
+#   feat     새 기능            fix      버그 수정
+#   refactor 구조 개선          style    포맷만 변경
+#   docs     문서               content  포트폴리오 내용·블로그 글
+#   test     테스트             build    Docker·의존성·배포 설정
+#   ci       CI 설정            chore    그 밖의 잡일
+# scope (선택): server, client, blog, contact, deps …
+#
+# 예) feat(blog): 글 태그 필터 추가
+#     fix(contact): 긴 제목이 잘리는 문제 수정

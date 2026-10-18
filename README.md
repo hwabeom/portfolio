@@ -1,0 +1,121 @@
+# 예다은 포트폴리오
+
+공공데이터와 기술로 지역과 일상의 문제를 해결하는 개발자·기획자 예다은의 포트폴리오 사이트입니다.
+VS Code 화면을 닮은 정적 프론트엔드와, 블로그·연락 폼을 처리하는 Express 백엔드로 구성됩니다.
+
+## 구조
+
+```
+public/            정적 프론트엔드 (빌드 과정 없음)
+  index.html       페이지 기본 구조
+  style.css        색상·글꼴·반응형 디자인
+  app.js           탭·검색·필터, 블로그·연락 폼 (API 호출)
+  data.js          프로젝트·활동·수상 데이터
+  posts.js         블로그 기본 글 (DB가 비어 있을 때 시드로 사용)
+  pet.js           하단을 돌아다니는 픽셀 고양이
+  assets/          발표 자료 슬라이드·이미지
+server/            백엔드 (Node.js + Express + SQLite)
+  index.js         서버 진입점, 보안 헤더, 정적 파일 제공
+  config.js        환경 변수
+  auth.js          관리자 세션 (HMAC 서명 쿠키)
+  db.js            SQLite 스키마와 기본 글 시드
+  mail.js          SMTP 메일 발송
+  routes/          auth · posts · contact API
+```
+
+## 로컬에서 실행
+
+Node.js 22.13 이상이 필요합니다 (내장 `node:sqlite` 사용).
+
+```bash
+npm install
+cp .env.example .env    # ADMIN_PASSWORD 등을 채운다
+npm run dev             # http://localhost:3000, 파일을 고치면 자동 재시작
+```
+
+DB 파일은 `data/portfolio.db`에 생기며, 처음 실행할 때 `public/posts.js`의 글이 들어갑니다.
+`public/index.html`을 바로 열거나 정적 호스팅에 올려도 사이트는 보이지만, 이때 블로그는 읽기 전용이고 연락 폼은 메일 앱 링크로 대신합니다.
+
+## API
+
+| 메서드 | 경로 | 설명 | 권한 |
+| --- | --- | --- | --- |
+| GET | `/api/health` | 헬스 체크 | 공개 |
+| GET | `/api/session` | 관리자 로그인 여부 | 공개 |
+| POST | `/api/login` | 관리자 로그인 `{password}` | 공개 (실패 15분 10회 제한) |
+| POST | `/api/logout` | 로그아웃 | 공개 |
+| GET | `/api/posts` · `/api/posts/:id` | 블로그 글 목록·상세 | 공개 |
+| POST · PUT · DELETE | `/api/posts` · `/api/posts/:id` | 글 작성·수정·삭제 | 관리자 |
+| POST | `/api/contact` | 연락 메시지 `{name, email, subject, message}` | 공개 (시간당 5회 제한) |
+| GET · DELETE | `/api/messages` · `/api/messages/:id` | 받은 메시지 보기·삭제 | 관리자 |
+
+## 환경 변수
+
+| 이름 | 필수 | 설명 |
+| --- | --- | --- |
+| `ADMIN_PASSWORD` | 배포 시 | 블로그 관리자 비밀번호 |
+| `SESSION_SECRET` | 배포 시 | 세션 쿠키 서명 키, 32자 이상 |
+| `NODE_ENV` | | `production`이면 Secure 쿠키·HSTS 적용 |
+| `PORT` | | 기본 3000 |
+| `DATA_DIR` | | SQLite 저장 폴더, 기본 `data` (Docker는 `/data`) |
+| `SMTP_HOST` `SMTP_PORT` `SMTP_USER` `SMTP_PASS` | | 연락 폼 알림 메일. 비우면 DB에만 저장 |
+| `MAIL_TO` · `MAIL_FROM` | | 받는 주소 (기본 yeda0311@gmail.com) · 보내는 주소 (기본 `SMTP_USER`) |
+
+Gmail로 받으려면 Google 계정에서 2단계 인증을 켜고 [앱 비밀번호](https://myaccount.google.com/apppasswords)를 만들어 `SMTP_USER`에 Gmail 주소, `SMTP_PASS`에 앱 비밀번호를 넣습니다.
+메일 발송이 실패해도 메시지는 DB에 남아 있어 관리자 모드의 **받은 메시지**에서 볼 수 있습니다.
+
+## 배포
+
+SQLite 파일을 쓰기 때문에 **영구 디스크(볼륨)를 붙일 수 있는 곳**에 올려야 재배포해도 글과 메시지가 남습니다.
+
+### Render (render.yaml 포함)
+
+1. [Render](https://render.com) → **New + → Blueprint** → 이 GitHub 저장소 선택
+2. `ADMIN_PASSWORD`, `SMTP_USER`, `SMTP_PASS` 값을 입력 (`SESSION_SECRET`은 자동 생성)
+3. 배포가 끝나면 `https://<서비스명>.onrender.com`에서 확인, `main`에 push할 때마다 자동 배포
+
+영구 디스크는 Starter 이상 유료 플랜에서만 쓸 수 있습니다. `render.yaml`의 `plan`을 `free`로 바꾸고 `disk`를 지우면 무료로 띄울 수 있지만, 재시작·재배포 때마다 DB가 처음 상태로 돌아갑니다.
+
+### Railway · Fly.io · 직접 운영하는 서버
+
+`Dockerfile`로 어디서든 같은 이미지를 띄울 수 있습니다. 볼륨을 `/data`에 연결하고 위 환경 변수를 넣으면 됩니다.
+
+```bash
+docker build -t hwabeom-portfolio .
+docker run -d -p 3000:3000 -v portfolio-data:/data \
+  -e NODE_ENV=production -e ADMIN_PASSWORD=... -e SESSION_SECRET=... \
+  hwabeom-portfolio
+```
+
+## 커밋 컨벤션
+
+[Conventional Commits](https://www.conventionalcommits.org/ko/v1.0.0/)를 따릅니다. 타입과 범위는 영어, 제목과 본문은 한국어로 씁니다.
+
+```
+<type>(<scope>): <제목>
+
+<본문: 무엇을, 왜 바꿨는지>
+```
+
+| type | 쓰는 때 |
+| --- | --- |
+| `feat` | 새 기능 |
+| `fix` | 버그 수정 |
+| `refactor` | 동작은 그대로 두고 코드 구조 개선 |
+| `style` | 코드 포맷·세미콜론 등 (CSS 디자인 변경은 `feat`/`fix`) |
+| `docs` | 문서 |
+| `content` | 프로젝트·활동·블로그 글 등 포트폴리오 내용 수정 |
+| `test` | 테스트 |
+| `build` | Docker·의존성·배포 설정 |
+| `ci` | CI 설정 |
+| `chore` | 그 밖의 잡일 |
+
+- scope: `server`, `client`, `blog`, `contact`, `deps` 등 (생략 가능)
+- 제목은 50자 안쪽, 마침표 없이 "~ 추가 / 수정 / 제거"처럼 끝냅니다.
+- 하위 호환이 깨지면 타입 뒤에 `!`를 붙이고 본문에 `BREAKING CHANGE:`를 적습니다.
+
+저장소에 들어 있는 템플릿을 쓰면 `git commit` 때 위 형식이 편집기에 미리 채워집니다.
+
+```bash
+git config commit.template .gitmessage
+```
