@@ -287,3 +287,8 @@ body.modal-open .pet-butterfly{visibility:hidden}
 .now-dot{width:8px;height:8px;border-radius:50%;background:var(--mint);animation:nowPulse 1.8s infinite}
 .now-tag{color:var(--mint);border-color:#3d5a51}
 @media(prefers-reduced-motion:reduce){.now-dot{animation:none}}
+
+/* ---------- Blog images ---------- */
+.post-figure{margin:28px 0}
+.post-figure img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:6px;background:#202328}
+.post-figure figcaption{margin-top:9px;color:var(--muted);font-size:12px;text-align:center}

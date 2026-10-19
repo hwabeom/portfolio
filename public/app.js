@@ -240,7 +240,7 @@ const postDate = d => esc(d.replaceAll('-', '.'));
 const readMin = text => Math.max(1, Math.round(text.replace(/\s/g, '').length / 400));
 const postHref = p => `#blog/${encodeURIComponent(p.id)}`;
 
-// 간단한 마크다운: ## 소제목, - 목록, > 인용, **굵게**, `코드`, [링크](https://…)
+// 간단한 마크다운: ## 소제목, - 목록, > 인용, **굵게**, `코드`, [링크](https://…), ![설명](assets/…) 이미지
 function md(src) {
   const inline = s => esc(s)
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -249,6 +249,9 @@ function md(src) {
   return String(src).replace(/\r/g, '').split(/\n{2,}/).map(block => {
     const lines = block.trim().split('\n');
     if (!lines[0]) return '';
+    // 이미지는 사이트 안의 assets/ 파일만 허용한다 (외부 이미지는 CSP에서도 막힌다)
+    const img = lines.length === 1 && lines[0].match(/^!\[([^\]]*)\]\((assets\/[\w./-]+)\)$/);
+    if (img) return `<figure class="post-figure"><img src="${esc(img[2])}" alt="${esc(img[1])}" loading="lazy">${img[1] ? `<figcaption>${esc(img[1])}</figcaption>` : ''}</figure>`;
     if (/^### /.test(lines[0])) return `<h3>${inline(lines[0].slice(4))}</h3>`;
     if (/^## /.test(lines[0])) return `<h2>${inline(lines[0].slice(3))}</h2>`;
     if (lines.every(l => /^- /.test(l))) return `<ul>${lines.map(l => `<li>${inline(l.slice(2))}</li>`).join('')}</ul>`;
@@ -341,7 +344,7 @@ function editorForm(p, draft) {
       <div class="editor-tabs"><span>본문</span><button type="button" class="active" data-editor-tab="write">작성</button><button type="button" data-editor-tab="preview">미리보기</button></div>
       <textarea name="content" rows="16" required>${esc(v.content)}</textarea>
       <div class="post-body preview" hidden></div>
-      <p class="note">## 소제목 · - 목록 · &gt; 인용 · **굵게** · \`코드\` · [링크](https://…) · 문단은 빈 줄로 구분</p>
+      <p class="note">## 소제목 · - 목록 · &gt; 인용 · **굵게** · \`코드\` · [링크](https://…) · ![설명](assets/slides/…/1.jpg) · 문단은 빈 줄로 구분</p>
     </div>
     <p class="form-status" role="status" aria-live="polite"></p>
     <div class="actions"><button class="button primary" type="submit">${p ? '수정 저장' : '발행하기'}</button><button class="button" type="button" data-close>취소</button></div>
