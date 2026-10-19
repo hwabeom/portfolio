@@ -33,6 +33,9 @@ function period(s) {
   }).join(' — ');
 }
 
+// 활동 기간이 "… → 현재" 로 끝나면 진행 중인 활동이다
+const isOngoing = a => /현재$/.test(a['활동 기간']);
+
 // "2026"처럼 연도만 있는 기록은 그 해의 맨 위에 오도록 정렬
 const dateKey = d => (/^\d{4}$/.test(d) ? `${d}/99` : d);
 const byDateDesc = (a, b) => dateKey(b['날짜']).localeCompare(dateKey(a['날짜']));
@@ -71,11 +74,13 @@ function projectCard(p) {
 function overview() {
   const awardCount = DATA.awards.filter(a => a['분류'] === '수상').length;
   const highlights = DATA.awards.filter(a => a.project && a['날짜'].startsWith('2026'));
+  const ongoing = DATA.activities.filter(isOngoing);
   const code = [
     'developer = {',
     `  <em>"name": "${NAME}",</em>`,
     '  <em>"role": ["Developer", "Planner", "Designer"],</em>',
     '  <em>"stack": ["Python", "Flask", "React"],</em>',
+    ...ongoing.map(a => `  <em>"now": "${esc(a['소속'])}",</em>`),
     '  <em>"focus": "지역과 일상의 문제 해결"</em>',
     '}'
   ];
@@ -88,6 +93,11 @@ function overview() {
   <div class="stats">
     ${[[DATA.projects.length, '프로젝트'], [awardCount, '수상'], [DATA.activities.length, '대외활동·경험']].map(([n, label]) => `<div class="stat reveal"><strong data-count="${n}">${n}</strong><span>${label}</span></div>`).join('')}
   </div>
+  ${ongoing.map(a => `<a class="now-card reveal" href="#experience">
+    <small><span class="now-dot" aria-hidden="true"></span>NOW / 진행 중</small>
+    <strong>${esc(a['소속'])}</strong>
+    <span class="note">${period(a['활동 기간'])} · ${esc(splitTags(a['키워드']).join(' · '))}</span>
+  </a>`).join('')}
   ${highlights.map(a => `<button class="featured-award reveal" data-project="${a.project}"><small>2026 / HIGHLIGHT</small><span class="fa-title">${esc(a['내용'])}</span><span class="note">${esc(findProject(a.project).name)} 프로젝트 보기 →</span></button>`).join('')}
   <div class="section-heading reveal"><h2>Selected Projects</h2><a class="subtle" href="#projects">VIEW ALL ↗</a></div>
   <div class="grid">${DATA.projects.slice(0, 4).map(projectCard).join('')}</div>`;
@@ -111,7 +121,7 @@ function about() {
 }
 
 function activityRows(rows) {
-  return rows.map(r => `<article class="record reveal"><time>${period(r['활동 기간'])}</time><div><h3>${esc(r['소속'])}</h3><div class="tags">${tags(r['키워드'])}</div></div></article>`).join('') || '<p class="empty">아직 이 분류에 등록된 활동이 없습니다.</p>';
+  return rows.map(r => `<article class="record reveal"><time>${period(r['활동 기간'])}</time><div><h3>${esc(r['소속'])}</h3><div class="tags">${tags(r['키워드'])}</div></div>${isOngoing(r) ? '<span class="tag now-tag">진행 중</span>' : ''}</article>`).join('') || '<p class="empty">아직 이 분류에 등록된 활동이 없습니다.</p>';
 }
 
 function experience() {

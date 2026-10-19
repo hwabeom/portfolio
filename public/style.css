@@ -276,3 +276,14 @@ body.modal-open .pet-butterfly{visibility:hidden}
 .inbox .records{margin-top:18px}
 .inbox .record .message-text{margin-top:10px;color:var(--text);font-size:14px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere}
 .inbox .record .button{padding:7px 12px;font-size:12px}
+
+/* ---------- Now (진행 중인 활동) ---------- */
+@keyframes nowPulse{0%{box-shadow:0 0 0 0 rgba(148,222,198,.55)}70%{box-shadow:0 0 0 9px rgba(148,222,198,0)}100%{box-shadow:0 0 0 0 rgba(148,222,198,0)}}
+.now-card{display:flex;flex-direction:column;gap:10px;margin:0 0 20px;padding:26px 28px;border:1px solid #3d5a51;border-radius:8px;background:linear-gradient(120deg,#1f2b28 0%,#212530 100%);transition:border-color .2s,transform .2s}
+.now-card:hover{border-color:var(--mint);transform:translateY(-2px);color:inherit}
+.now-card small{display:flex;align-items:center;gap:9px;color:var(--mint);font:11px var(--pixel);letter-spacing:1.5px}
+.now-card strong{font-size:clamp(22px,2.4vw,30px);letter-spacing:-.8px;line-height:1.3}
+.now-card .note{margin:0}
+.now-dot{width:8px;height:8px;border-radius:50%;background:var(--mint);animation:nowPulse 1.8s infinite}
+.now-tag{color:var(--mint);border-color:#3d5a51}
+@media(prefers-reduced-motion:reduce){.now-dot{animation:none}}
