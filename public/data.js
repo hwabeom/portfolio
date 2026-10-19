@@ -198,7 +198,7 @@ const DATA = {
       summary: "상권 분석에서 끝나지 않고 문제 진단 · 전략 제안 · 실행 도구까지 연결하는 소상공인 플랫폼",
       award: "2025 공공데이터 활용 공모전 소상공인시장진흥공단 이사장상 (대상)",
       period: "2025.09",
-      team: "D-CODE 팀 · 4명",
+      team: "팀 소담 · 4명",
       role: "백엔드 개발",
       keywords: ["개발", "기획"],
       stack: ["공공데이터 API", "Kakao Map API", "Web", "iOS"],
