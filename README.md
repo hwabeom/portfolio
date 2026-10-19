@@ -88,16 +88,22 @@ SQLite 파일을 쓰기 때문에 **영구 디스크(볼륨)를 붙일 수 있�
 ### Render (render.yaml 포함)
 
 1. [Render](https://render.com) → **New + → Blueprint** → 이 GitHub 저장소 선택
-2. `ADMIN_PASSWORD`, `SMTP_USER`, `SMTP_PASS` 값을 입력 (`SESSION_SECRET`은 자동 생성)
+2. `ADMIN_PASSWORD` 값을 입력 (`SESSION_SECRET`은 자동 생성)
 3. 배포가 끝나면 `https://<서비스명>.onrender.com`에서 확인, `main`에 push할 때마다 자동 배포
 
-영구 디스크는 Starter 이상 유료 플랜에서만 쓸 수 있습니다. `render.yaml`의 `plan`을 `free`로 바꾸고 `disk`를 지우면 무료로 띄울 수 있지만, 재시작·재배포 때마다 DB가 처음 상태로 돌아갑니다. 무료 인스턴스는 SMTP 포트도 막혀 있을 수 있으니 메일 알림이 오지 않으면 로그를 확인하세요.
+기본 설정은 **무료 플랜**입니다 (요금 없음). 무료 플랜에는 다음 제약이 있습니다.
+
+- 15분 동안 접속이 없으면 서버가 잠들고, 다음 접속 때 깨어나는 데 1분쯤 걸립니다.
+- 영구 디스크가 없어 서버가 잠들었다 깨거나 재배포하면 DB가 기본 글 상태로 돌아갑니다. 오래 남길 글은 관리자 모드의 **posts.js 백업**으로 받아 `public/posts.js`에 반영한 뒤 push하세요.
+- SMTP 포트가 막혀 메일 알림을 보낼 수 없습니다. 연락 메시지는 **받은 메시지**에서 확인합니다 (이 역시 서버가 다시 시작되면 사라집니다).
+
+글과 메시지를 계속 남기고 메일 알림도 받으려면 `render.yaml`에서 `plan: starter`로 바꾸고 주석 처리한 `disk`·SMTP 설정을 살리세요. 이때부터 요금이 청구됩니다.
 
 배포 후 확인할 것:
 
 1. `https://<서비스명>.onrender.com/api/health`가 `{"ok":true}`인지
 2. blog.md 탭에서 **관리자 글쓰기**로 로그인해 글을 쓰고, 다른 브라우저에서도 보이는지
-3. contact.ts 탭에서 메시지를 보내 메일이 오는지, 관리자 모드의 **받은 메시지**에 쌓이는지
+3. contact.ts 탭에서 메시지를 보내 관리자 모드의 **받은 메시지**에 쌓이는지
 
 ### Railway · Fly.io · 직접 운영하는 서버
 
