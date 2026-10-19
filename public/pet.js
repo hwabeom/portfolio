@@ -19,6 +19,7 @@
   const sitBase = [['w', 2, 10, 4, 1], ['w', 5, 6, 7, 5], ['w', 9, 11, 1, 1], ['w', 11, 11, 1, 1]];
   const sitScarf = ['m', 8, 7, 4, 1];
   const closedEye = (x, y) => ['e', x, y, 2, 1];
+  const dangleTop = [['w', 7, 1, 7, 5], ['w', 8, 0], ['w', 12, 0], ['e', 9, 2, 1, 2], ['e', 11, 2, 1, 2], ['g', 10, 4], ['m', 8, 6, 5, 1], ['w', 8, 7, 5, 4], ['w', 7, 7, 1, 2], ['w', 13, 7, 1, 2]];
 
   const FRAMES = {
     walk1: [...tailA, body, ...head(10, 2), scarf, ...legs(2, 1)],
@@ -33,7 +34,10 @@
     groom2: [...sitBase, ...head(9, 2, [closedEye(12, 4)]), sitScarf, ['w', 16, 4, 1, 2], ['g', 15, 6]],
     stretch: [['w', 2, 1, 1, 3], ['w', 3, 3, 5, 5], ['w', 7, 6, 5, 4], ...head(11, 5, [closedEye(14, 7)]), ['m', 10, 8, 1, 2], ['w', 3, 8, 1, 4], ['w', 6, 8, 1, 4], ['w', 12, 11, 5, 1]],
     sleep: [['w', 2, 9, 1, 2], ['w', 3, 7, 11, 4], ...head(11, 5, [closedEye(14, 8)]), ['m', 10, 8, 1, 3]],
-    jump: [...tailB, body, ...head(10, 2), scarf, ...legs(3, 3)]
+    jump: [...tailB, body, ...head(10, 2), scarf, ...legs(3, 3)],
+    // 목덜미를 잡혀 매달린 정면 모습: 발을 번갈아 버둥거린다
+    dangle1: [...dangleTop, ['w', 8, 11, 1, 2], ['w', 12, 11, 1, 1], ['w', 10, 11, 1, 2]],
+    dangle2: [...dangleTop, ['w', 8, 11, 1, 1], ['w', 12, 11, 1, 2], ['w', 10, 11, 1, 2]]
   };
 
   function grid(parts) {
@@ -70,13 +74,14 @@
   pet.type = 'button';
   pet.className = 'pet';
   pet.setAttribute('aria-label', '산책 중인 픽셀 고양이 — 누르면 점프해요');
-  pet.innerHTML = `<svg viewBox="0 0 ${W} ${H}" shape-rendering="crispEdges" aria-hidden="true">${Object.entries(FRAMES).map(([name, parts]) => `<g data-frame="${name}">${rects(grid(parts))}</g>`).join('')}</svg>
+  pet.innerHTML = `<svg viewBox="0 0 ${W} ${H}" shape-rendering="crispEdges" aria-hidden="true"><g class="pet-swing">${Object.entries(FRAMES).map(([name, parts]) => `<g data-frame="${name}">${rects(grid(parts))}</g>`).join('')}</g></svg>
     <span class="pet-zzz" aria-hidden="true"><i>z</i><i>z</i><i>z</i></span>
     <span class="pet-bubble" aria-hidden="true"></span>`;
   document.body.appendChild(pet);
 
   const frames = Object.fromEntries([...pet.querySelectorAll('g[data-frame]')].map(g => [g.dataset.frame, g]));
   const bubble = pet.querySelector('.pet-bubble');
+  const swingG = pet.querySelector('.pet-swing');
   const footer = document.querySelector('footer');
   const aside = document.querySelector('aside');
   const rand = (a, b) => a + Math.random() * (b - a);
@@ -86,6 +91,8 @@
   let x = 0, y = 0, vy = 0, dir = 1;
   let state = 'walk', since = 0, until = 0, shown = null, last = performance.now();
   let drag = null, butterfly = null, nextHop = 0, enabled = true, raf = 0;
+  // 매달렸을 때 흔들림: 각도(도), 각속도, 잡은 지점의 속도
+  let swing = 0, swingV = 0, holdX = 0, holdV = 0;
 
   // 사이드바가 화면에 붙어 있으면(데스크톱) 그 오른쪽에서만 걸어 다닌다
   function measure() {
@@ -174,6 +181,27 @@
     butterfly.style.transform = `translate3d(${bx}px, ${-by}px, 0)`;
   }
 
+  /* ---------- Dangle ---------- */
+
+  // 잡은 지점을 축으로 한 진자: 끌고 가는 방향의 반대로 몸이 뒤처졌다가 대롱대롱 흔들리며 멈춘다
+  function dangle(now, dt) {
+    if (reduceMotion || !dt) return swingTo(0);
+    const v = (x - holdX) / dt;
+    holdX = x;
+    const prev = holdV;
+    holdV += (v - holdV) * Math.min(1, dt * 12);
+    // 오른쪽으로 끌면(가속) 몸은 왼쪽으로 뒤처진다. SVG 회전은 양수가 시계 방향이라 아래쪽이 왼쪽으로 간다
+    const accel = (holdV - prev) / dt;
+    swingV += (-70 * swing - 3 * swingV + accel * 0.15) * dt;
+    swing = clamp(swing + swingV * dt, -55, 55);
+    // 가만히 들고 있어도 살랑살랑 흔들린다
+    swingTo(swing + Math.sin(now / 240) * 6);
+  }
+
+  function swingTo(deg) {
+    swingG.setAttribute('transform', `rotate(${deg.toFixed(2)} ${W / 2} 0)`);
+  }
+
   /* ---------- Loop ---------- */
 
   function tick(now) {
@@ -213,6 +241,9 @@
       moveButterfly(now);
       if (!airborne && now > nextHop) { vy = rand(240, 330); nextHop = now + rand(700, 1200); }
       show(y > 0 ? 'jump' : 'look');
+    } else if (state === 'drag') {
+      show(Math.floor(now / 170) % 2 ? 'dangle1' : 'dangle2');
+      dangle(now, dt);
     } else {
       show('jump');
     }
@@ -249,7 +280,14 @@
     if (!drag || e.pointerId !== drag.id) return;
     const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
     if (!drag.moved && Math.hypot(dx, dy) < 6) return;
-    if (!drag.moved) { drag.moved = true; endPlay(); setState('drag'); say('?!', 900); }
+    if (!drag.moved) {
+      drag.moved = true;
+      endPlay();
+      setState('drag');
+      say('?!', 900);
+      swing = swingV = holdV = 0;
+      holdX = x;
+    }
     if (dx) dir = dx > 0 ? 1 : -1;
     x = clamp(drag.px + dx, minX, maxX);
     y = clamp(drag.py - dy, 0, innerHeight - ground - pet.offsetHeight);
@@ -259,7 +297,7 @@
     if (!drag || e.pointerId !== drag.id) return;
     const moved = drag.moved;
     drag = null;
-    if (moved) { vy = 0; setState('fall'); }
+    if (moved) { vy = 0; swingTo(0); setState('fall'); }
     else poke();
   };
   pet.addEventListener('pointerup', release);

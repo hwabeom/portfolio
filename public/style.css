@@ -217,8 +217,9 @@ button.contact-row{width:100%;background:none;color:inherit;font:inherit;text-al
 .pet{position:fixed;left:0;bottom:29px;z-index:15;width:96px;height:67px;padding:0;border:0;background:none;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent;will-change:transform}
 .pet svg{display:block;width:100%;height:100%;overflow:visible}
 .pet.flip svg{transform:scaleX(-1)}
-.pet g{display:none}
-.pet g.on{display:inline}
+.pet[data-state=drag] svg{transform:none}
+.pet g[data-frame]{display:none}
+.pet g[data-frame].on{display:inline}
 .pet[data-state=drag]{cursor:grabbing;filter:drop-shadow(0 10px 6px rgba(0,0,0,.45))}
 .pet:focus-visible{outline:2px dashed var(--mint);outline-offset:4px}
 .pet-zzz{position:absolute;right:2px;top:-10px;display:none;font:12px var(--pixel);color:var(--mint);pointer-events:none}
